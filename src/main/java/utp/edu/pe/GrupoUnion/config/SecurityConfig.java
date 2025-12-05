@@ -2,7 +2,9 @@ package utp.edu.pe.GrupoUnion.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.authentication.AuthenticationProvider;;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -44,19 +46,10 @@ public class SecurityConfig {
 
                 // 3. Autorización de Rutas
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/public/**", "/login").permitAll() // Rutas públicas
+                        .requestMatchers("/api/public/**", "/api/auth/login").permitAll() // Rutas públicas
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")       // Solo ADMIN
                         .requestMatchers("/api/empleado/**").hasRole("EMPLEADO") // Solo EMPLEADO
                         .anyRequest().authenticated()
-                )
-
-                // 4. Login Form (Procesamiento JSON)
-                // Aunque se llame formLogin, nuestros handlers devolverán JSON
-                .formLogin(login -> login
-                        .loginProcessingUrl("/login") // Ruta donde Angular hará POST
-                        .successHandler(successHandler) // Devuelve JSON { redirectUrl: ... }
-                        .failureHandler(failureHandler) // Devuelve JSON { error: ... }
-                        .permitAll()
                 )
 
                 // 5. Logout
@@ -82,6 +75,11 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
     }
 
     @Bean

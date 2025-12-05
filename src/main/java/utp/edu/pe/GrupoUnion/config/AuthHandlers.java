@@ -30,13 +30,13 @@ public class AuthHandlers {
             response.setContentType("application/json;charset=UTF-8");
 
             Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
-            String role = authorities.isEmpty() ? "" : authorities.iterator().next().getAuthority();
+            String role = authorities.isEmpty() ? "" : authentication.getAuthorities().iterator().next().getAuthority().replace("ROLE_", "");
             String redirectUrl = "/";
 
             // Lógica de redirección (Angular leerá esto)
-            if ("ROLE_ADMIN".equals(role)) {
+            if ("ADMIN".equals(role)) { // Check for "ADMIN" after "ROLE_" prefix is removed
                 redirectUrl = "/admin/dashboard";
-            } else if ("ROLE_EMPLEADO".equals(role)) {
+            } else if ("EMPLEADO".equals(role)) { // Check for "EMPLEADO" after "ROLE_" prefix is removed
                 redirectUrl = "/empleado/dashboard";
             }
 
