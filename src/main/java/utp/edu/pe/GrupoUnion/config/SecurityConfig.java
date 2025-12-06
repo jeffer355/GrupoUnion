@@ -4,7 +4,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.authentication.AuthenticationProvider;;
+import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -38,24 +38,27 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // 1. Configuración CORS (Vital para Angular)
+                // 1. Configuración de CORS
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
-                // 2. Desactivar CSRF (Recomendado para APIs REST simples o si usas JWT más adelante)
+                // 2. Desactivar CSRF (común en APIs REST)
                 .csrf(csrf -> csrf.disable())
 
-                // 3. Autorización de Rutas
+                // 3. Configuración de Rutas y Permisos
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/public/**", "/api/auth/login").permitAll() // Rutas públicas
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")       // Solo ADMIN
-                        .requestMatchers("/api/empleado/**").hasRole("EMPLEADO") // Solo EMPLEADO
+                        .requestMatchers("/api/public/**", "/api/auth/**").permitAll()
+
+                        // SOLUCIÓN AL ERROR 403: Usamos hasAuthority
+                        .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
+                        .requestMatchers("/api/empleado/**").hasAuthority("EMPLEADO")
+
                         .anyRequest().authenticated()
                 )
 
-                // 5. Logout
+                // 4. Configuración de Logout
                 .logout(logout -> logout
                         .logoutUrl("/logout")
-                        .logoutSuccessHandler((req, res, auth) -> res.setStatus(200)) // Logout simple 200 OK
+                        .logoutSuccessHandler((req, res, auth) -> res.setStatus(200))
                         .deleteCookies("JSESSIONID")
                         .permitAll()
                 );
@@ -63,14 +66,20 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // Configuración para permitir peticiones desde Angular (localhost:4200)
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:4200")); // Puerto de Angular
+        // Permitir solo el origen de Angular
+        configuration.setAllowedOrigins(List.of("http://localhost:4200"));
+
+        // Métodos permitidos
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));
-        configuration.setAllowCredentials(true); // Permitir cookies/sesión
+
+        // Cabeceras permitidas
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "accept", "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"));
+
+        // VITAL PARA QUE LA COOKIE LLEGUE AL BACKEND
+        configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
