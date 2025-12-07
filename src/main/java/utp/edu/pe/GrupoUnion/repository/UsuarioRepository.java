@@ -9,8 +9,10 @@ import java.util.Optional;
 @Repository
 public interface UsuarioRepository extends JpaRepository<Usuario, Integer> {
 
-    // Método personalizado necesario para el Login (UserDetailsServiceImpl)
+    // Método para login
     Optional<Usuario> findByUsername(String username);
 
-    // Los métodos crud (save, delete, findAll) ya vienen heredados
+    // --- ESTE ES EL MÉTODO QUE TE FALTA ---
+    // Spring Boot implementará automáticamente la consulta "SELECT COUNT(*) > 0 ..."
+    boolean existsByUsername(String username);
 }
