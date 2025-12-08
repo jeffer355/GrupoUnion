@@ -2,7 +2,6 @@ package utp.edu.pe.GrupoUnion.entity.core;
 
 import jakarta.persistence.*;
 import utp.edu.pe.GrupoUnion.entity.catalogs.TipoDocumento;
-
 import java.time.LocalDate;
 import java.io.Serializable;
 
@@ -37,9 +36,14 @@ public class Persona implements Serializable {
     @Column(name = "direccion")
     private String direccion;
 
+    // --- NUEVO CAMPO PARA LA FOTO ---
+    @Column(name = "foto_url")
+    private String fotoUrl;
+
     public Persona() {}
 
-    public Persona(Integer idPersona, String nombres, TipoDocumento tipoDocumento, String nroDocumento, LocalDate fechaNac, String telefono, String email, String direccion) {
+    // Constructor completo actualizado
+    public Persona(Integer idPersona, String nombres, TipoDocumento tipoDocumento, String nroDocumento, LocalDate fechaNac, String telefono, String email, String direccion, String fotoUrl) {
         this.idPersona = idPersona;
         this.nombres = nombres;
         this.tipoDocumento = tipoDocumento;
@@ -48,29 +52,28 @@ public class Persona implements Serializable {
         this.telefono = telefono;
         this.email = email;
         this.direccion = direccion;
+        this.fotoUrl = fotoUrl;
     }
 
+    // Getters y Setters
     public Integer getIdPersona() { return idPersona; }
     public void setIdPersona(Integer idPersona) { this.idPersona = idPersona; }
-
     public String getNombres() { return nombres; }
     public void setNombres(String nombres) { this.nombres = nombres; }
-
     public TipoDocumento getTipoDocumento() { return tipoDocumento; }
     public void setTipoDocumento(TipoDocumento tipoDocumento) { this.tipoDocumento = tipoDocumento; }
-
     public String getNroDocumento() { return nroDocumento; }
     public void setNroDocumento(String nroDocumento) { this.nroDocumento = nroDocumento; }
-
     public LocalDate getFechaNac() { return fechaNac; }
     public void setFechaNac(LocalDate fechaNac) { this.fechaNac = fechaNac; }
-
     public String getTelefono() { return telefono; }
     public void setTelefono(String telefono) { this.telefono = telefono; }
-
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
-
     public String getDireccion() { return direccion; }
     public void setDireccion(String direccion) { this.direccion = direccion; }
+
+    // Getter y Setter para fotoUrl
+    public String getFotoUrl() { return fotoUrl; }
+    public void setFotoUrl(String fotoUrl) { this.fotoUrl = fotoUrl; }
 }
