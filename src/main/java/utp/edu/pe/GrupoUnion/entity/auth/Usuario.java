@@ -2,9 +2,8 @@ package utp.edu.pe.GrupoUnion.entity.auth;
 
 import jakarta.persistence.*;
 import utp.edu.pe.GrupoUnion.entity.core.Persona;
-
-import java.time.LocalDateTime;
 import java.io.Serializable;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "usuario")
@@ -32,43 +31,40 @@ public class Usuario implements Serializable {
     @Column(name = "activo")
     private Boolean activo;
 
+    // --- NUEVOS CAMPOS PARA SEGURIDAD ---
+    @Column(name = "requiere_cambio_pass")
+    private Boolean requiereCambioPass = true; // True por defecto
+
+    @Column(name = "token_2fa")
+    private String token2fa;
+    // ------------------------------------
+
     @Column(name = "creado_en", insertable = false, updatable = false)
     private LocalDateTime creadoEn;
 
     @PrePersist
-    protected void onCreate() {
-        creadoEn = LocalDateTime.now();
-    }
+    protected void onCreate() { creadoEn = LocalDateTime.now(); }
 
     public Usuario() {}
 
-    public Usuario(Integer idUsuario, Persona persona, Rol rol, String username, String hashPass, Boolean activo) {
-        this.idUsuario = idUsuario;
-        this.persona = persona;
-        this.rol = rol;
-        this.username = username;
-        this.hashPass = hashPass;
-        this.activo = activo;
-    }
-
+    // Getters y Setters (Asegúrate de tener los de los nuevos campos)
     public Integer getIdUsuario() { return idUsuario; }
     public void setIdUsuario(Integer idUsuario) { this.idUsuario = idUsuario; }
-
     public Persona getPersona() { return persona; }
     public void setPersona(Persona persona) { this.persona = persona; }
-
     public Rol getRol() { return rol; }
     public void setRol(Rol rol) { this.rol = rol; }
-
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
-
     public String getHashPass() { return hashPass; }
     public void setHashPass(String hashPass) { this.hashPass = hashPass; }
-
     public Boolean getActivo() { return activo; }
     public void setActivo(Boolean activo) { this.activo = activo; }
-
     public LocalDateTime getCreadoEn() { return creadoEn; }
-    public void setCreadoEn(LocalDateTime creadoEn) { this.creadoEn = creadoEn; }
+
+    // Getters/Setters Nuevos
+    public Boolean getRequiereCambioPass() { return requiereCambioPass; }
+    public void setRequiereCambioPass(Boolean requiereCambioPass) { this.requiereCambioPass = requiereCambioPass; }
+    public String getToken2fa() { return token2fa; }
+    public void setToken2fa(String token2fa) { this.token2fa = token2fa; }
 }
