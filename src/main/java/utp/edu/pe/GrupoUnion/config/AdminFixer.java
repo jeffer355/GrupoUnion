@@ -13,10 +13,11 @@ public class AdminFixer {
     @Bean
     CommandLineRunner resetAdminPassword(UsuarioRepository usuarioRepository, PasswordEncoder passwordEncoder) {
         return args -> {
-            String email = "admin@grupounion.com";
+            // --- CAMBIO: AHORA APUNTA A TU CORREO PERSONAL ---
+            String email = "jeffer355123@gmail.com";
             String newPassword = "admin123";
 
-            System.out.println(">>> 🔧 INICIANDO REPARACIÓN DE CUENTA ADMIN...");
+            System.out.println(">>> 🔧 INICIANDO REPARACIÓN DE CUENTA ADMIN (" + email + ")...");
 
             Usuario admin = usuarioRepository.findByUsername(email).orElse(null);
 
@@ -28,13 +29,19 @@ public class AdminFixer {
                 admin.setHashPass(newHash);
                 admin.setActivo(true);
 
-                // 3. Guardamos en BD (Esto elimina cualquier caracter basura anterior)
+                // 3. EVITAMOS QUE PIDA CAMBIO DE CONTRASEÑA AL ENTRAR (Opcional, para admin es útil)
+                admin.setRequiereCambioPass(false);
+                admin.setToken2fa(null); // Limpiamos cualquier token trabado
+
+                // 4. Guardamos en BD
                 usuarioRepository.save(admin);
-                System.out.println("admin@grupounion.com");
-                System.out.println(">>> ✅ ÉXITO: Contraseña de admin actualizada a: " + newPassword);
+
+                System.out.println(">>> ✅ ÉXITO: Usuario " + email + " activo.");
+                System.out.println(">>> ✅ CONTRASEÑA RESTAURADA A: " + newPassword);
 
             } else {
-                System.out.println(">>> ❌ ERROR: No se encontró el usuario " + email + " en la BD.");
+                System.out.println(">>> ❌ ERROR: No se encontró el usuario " + email + " en la tabla 'usuario'.");
+                System.out.println(">>> NOTA: Este script solo arregla usuarios existentes. Asegúrate de que el registro exista en la BD.");
             }
             System.out.println(">>> ----------------------------------------------------");
         };
