@@ -48,10 +48,10 @@ public class AsistenciaManualController {
     private String getClientInfo(HttpServletRequest request) {
         String ip = request.getHeader("X-FORWARDED-FOR");
         if (ip == null || "".equals(ip)) ip = request.getRemoteAddr();
-        return "IP: " + ip; // Aquí podrías agregar hostname si la red lo permite
+        return "IP: " + ip;
     }
 
-    // 1. ESTADO DE HOY (Para el panel del empleado)
+    // 1. ESTADO DE HOY
     @GetMapping("/hoy")
     public ResponseEntity<?> getAsistenciaHoy() {
         try {
@@ -62,7 +62,7 @@ public class AsistenciaManualController {
         }
     }
 
-    // 2. MARCAR ASISTENCIA (Lógica de negocio solicitada)
+    // 2. MARCAR ASISTENCIA (CORREGIDO: Devuelve el objeto actualizado)
     @PostMapping("/marcar")
     public ResponseEntity<?> marcarAsistencia(@RequestBody Map<String, Object> payload, HttpServletRequest request) {
         try {
@@ -106,26 +106,31 @@ public class AsistenciaManualController {
                 asistencia.setOrigenSalida(infoCliente);
 
                 if (ahora.toLocalTime().isBefore(HORA_SALIDA_OFICIAL)) {
-                    // Si sale temprano, actualizamos estado (preservando si ya tenía tardanza)
                     String estadoPrevio = asistencia.getEstado();
                     asistencia.setEstado(estadoPrevio + " / SALIDA ANTICIPADA");
                 }
             }
 
-            asistenciaRepository.save(asistencia);
-            return ResponseEntity.ok(Map.of("status", "SUCCESS", "message", "Marcación registrada."));
+            // GUARDAMOS Y CAPTURAMOS EL OBJETO GUARDADO
+            Asistencia asistenciaGuardada = asistenciaRepository.save(asistencia);
+
+            // RETORNAMOS EL OBJETO ACTUALIZADO EN LA RESPUESTA
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "SUCCESS");
+            response.put("message", "Marcación registrada.");
+            response.put("data", asistenciaGuardada); // <--- ESTO ES LA CLAVE
+
+            return ResponseEntity.ok(response);
 
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("message", "Error: " + e.getMessage()));
         }
     }
 
-    // 3. REPORTE GENERAL DIARIO (Para Admin - Vista A)
+    // 3. REPORTE GENERAL DIARIO
     @GetMapping("/reporte-diario")
     public ResponseEntity<?> getReporteDiario(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
         LocalDate targetDate = (fecha != null) ? fecha : LocalDate.now();
-
-        // Obtenemos TODOS los empleados para saber quién faltó
         List<Empleado> todosEmpleados = empleadoRepository.findAll();
         List<Map<String, Object>> reporte = new ArrayList<>();
 
@@ -154,20 +159,18 @@ public class AsistenciaManualController {
         return ResponseEntity.ok(reporte);
     }
 
-    // 4. HISTORIAL INDIVIDUAL (Para Admin - Vista B)
+    // 4. HISTORIAL INDIVIDUAL
     @GetMapping("/historial/{idEmpleado}")
     public ResponseEntity<?> getHistorialEmpleado(@PathVariable Integer idEmpleado) {
-        // Asumiendo que agregaste findByEmpleadoIdEmpleado en AsistenciaRepository
-        // Si no, usa findAll y filtra (menos eficiente pero funciona sin tocar Repo)
         List<Asistencia> lista = asistenciaRepository.findAll().stream()
                 .filter(a -> a.getEmpleado().getIdEmpleado().equals(idEmpleado))
-                .sorted((a, b) -> b.getFecha().compareTo(a.getFecha())) // Orden descendente
+                .sorted((a, b) -> b.getFecha().compareTo(a.getFecha()))
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(lista);
     }
 
-    // 5. EDICIÓN / JUSTIFICACIÓN (Para Admin - Vista C)
+    // 5. EDICIÓN / JUSTIFICACIÓN
     @PutMapping("/actualizar/{id}")
     public ResponseEntity<?> actualizarRegistro(@PathVariable Integer id, @RequestBody Map<String, Object> payload) {
         Asistencia asis = asistenciaRepository.findById(id).orElseThrow(() -> new RuntimeException("No encontrado"));
@@ -175,7 +178,6 @@ public class AsistenciaManualController {
         if (payload.containsKey("estado")) asis.setEstado((String) payload.get("estado"));
         if (payload.containsKey("observacion")) asis.setObservacion((String) payload.get("observacion"));
 
-        // Permitir corrección de horas si es necesario
         if (payload.containsKey("horaEntrada") && payload.get("horaEntrada") != null) {
             asis.setHoraEntrada(LocalDateTime.parse((String)payload.get("horaEntrada")));
         }
