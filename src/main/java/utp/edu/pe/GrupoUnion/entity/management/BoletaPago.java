@@ -2,7 +2,6 @@ package utp.edu.pe.GrupoUnion.entity.management;
 
 import jakarta.persistence.*;
 import utp.edu.pe.GrupoUnion.entity.core.Empleado;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -22,11 +21,14 @@ public class BoletaPago {
     @Column(name = "url_archivo")
     private String urlArchivo;
 
-    // ESTADOS: DISPONIBLE, RESTRINGIDA, BORRADOR
     private String estado;
 
     @Column(name = "fecha_subida")
     private LocalDateTime fechaSubida;
+
+    // --- NUEVO CAMPO ---
+    @Column(name = "subido_por")
+    private String subidoPor;
 
     @PrePersist
     protected void onCreate() { fechaSubida = LocalDateTime.now(); }
@@ -45,4 +47,8 @@ public class BoletaPago {
     public String getEstado() { return estado; }
     public void setEstado(String estado) { this.estado = estado; }
     public LocalDateTime getFechaSubida() { return fechaSubida; }
+
+    // Getter/Setter Nuevo
+    public String getSubidoPor() { return subidoPor; }
+    public void setSubidoPor(String subidoPor) { this.subidoPor = subidoPor; }
 }

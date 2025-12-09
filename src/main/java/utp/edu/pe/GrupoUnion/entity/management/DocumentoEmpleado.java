@@ -15,17 +15,21 @@ public class DocumentoEmpleado {
     @JoinColumn(name = "id_empleado", nullable = false)
     private Empleado empleado;
 
-    private String nombre; // Ej: Contrato, CV
-    private String tipo;   // Ej: CONTRATO, MEDICO, OTROS
+    private String nombre;
+    private String tipo;
     private String urlArchivo;
 
     @Column(name = "fecha_subida")
     private LocalDateTime fechaSubida;
 
+    // --- NUEVO CAMPO ---
+    @Column(name = "subido_por")
+    private String subidoPor;
+
     @PrePersist
     protected void onCreate() { fechaSubida = LocalDateTime.now(); }
 
-    // Getters y Setters standard...
+    // Getters y Setters
     public Integer getIdDocumento() { return idDocumento; }
     public void setIdDocumento(Integer idDocumento) { this.idDocumento = idDocumento; }
     public Empleado getEmpleado() { return empleado; }
@@ -37,4 +41,8 @@ public class DocumentoEmpleado {
     public String getUrlArchivo() { return urlArchivo; }
     public void setUrlArchivo(String urlArchivo) { this.urlArchivo = urlArchivo; }
     public LocalDateTime getFechaSubida() { return fechaSubida; }
+
+    // Getter/Setter Nuevo
+    public String getSubidoPor() { return subidoPor; }
+    public void setSubidoPor(String subidoPor) { this.subidoPor = subidoPor; }
 }
