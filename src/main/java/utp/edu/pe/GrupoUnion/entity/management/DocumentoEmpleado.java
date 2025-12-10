@@ -22,12 +22,21 @@ public class DocumentoEmpleado {
     @Column(name = "fecha_subida")
     private LocalDateTime fechaSubida;
 
-    // --- NUEVO CAMPO ---
     @Column(name = "subido_por")
     private String subidoPor;
 
+    // --- NUEVOS CAMPOS PARA APROBACIÓN ---
+    @Column(name = "estado", length = 50)
+    private String estado = "PENDIENTE"; // Valor por defecto
+
+    @Column(name = "observacion", columnDefinition = "TEXT")
+    private String observacion;
+
     @PrePersist
-    protected void onCreate() { fechaSubida = LocalDateTime.now(); }
+    protected void onCreate() {
+        fechaSubida = LocalDateTime.now();
+        if (estado == null) estado = "PENDIENTE";
+    }
 
     // Getters y Setters
     public Integer getIdDocumento() { return idDocumento; }
@@ -41,8 +50,12 @@ public class DocumentoEmpleado {
     public String getUrlArchivo() { return urlArchivo; }
     public void setUrlArchivo(String urlArchivo) { this.urlArchivo = urlArchivo; }
     public LocalDateTime getFechaSubida() { return fechaSubida; }
-
-    // Getter/Setter Nuevo
     public String getSubidoPor() { return subidoPor; }
     public void setSubidoPor(String subidoPor) { this.subidoPor = subidoPor; }
+
+    // Nuevos Getters/Setters
+    public String getEstado() { return estado; }
+    public void setEstado(String estado) { this.estado = estado; }
+    public String getObservacion() { return observacion; }
+    public void setObservacion(String observacion) { this.observacion = observacion; }
 }

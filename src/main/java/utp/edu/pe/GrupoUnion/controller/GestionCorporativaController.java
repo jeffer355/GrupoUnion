@@ -44,50 +44,45 @@ public class GestionCorporativaController {
         return empleadoRepo.findByPersona(usuario.getPersona()).orElseThrow(() -> new RuntimeException("No es empleado"));
     }
 
-    // Helper para obtener nombre de usuario logueado (Admin)
     private String getUsernameActual() {
         return SecurityContextHolder.getContext().getAuthentication().getName();
+    }
+
+    private boolean isAdmin() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ADMIN"));
     }
 
     // ==========================================
     //              BOLETAS
     // ==========================================
-
     @GetMapping("/boletas/mis-boletas")
     public List<BoletaPago> getMisBoletas() {
         return boletaRepo.findByEmpleadoIdEmpleadoOrderByAnioDescMesDesc(getEmpleadoActual().getIdEmpleado());
     }
 
-    // NUEVO: Historial Admin
     @GetMapping("/admin/boletas/historial")
     public List<BoletaPago> getHistorialBoletas() {
         return boletaRepo.findAllByOrderByFechaSubidaDesc();
     }
 
-    // ACTUALIZADO: Subida con registro de Admin
     @PostMapping("/admin/boletas/upload")
-    public ResponseEntity<?> subirBoleta(@RequestParam("idEmpleado") Integer idEmpleado,
-                                         @RequestParam("mes") Integer mes,
-                                         @RequestParam("anio") Integer anio,
-                                         @RequestParam("file") MultipartFile file) {
+    public ResponseEntity<?> subirBoleta(@RequestParam("idEmpleado") Integer idEmpleado, @RequestParam("mes") Integer mes, @RequestParam("anio") Integer anio, @RequestParam("file") MultipartFile file) {
         try {
             String url = cloudinaryService.uploadFile(file);
             Empleado emp = empleadoRepo.findById(idEmpleado).orElseThrow();
-
             BoletaPago boleta = new BoletaPago();
             boleta.setEmpleado(emp);
             boleta.setMes(mes);
             boleta.setAnio(anio);
             boleta.setUrlArchivo(url);
-            boleta.setSubidoPor(getUsernameActual()); // Guardamos quién subió
-
+            boleta.setSubidoPor(getUsernameActual());
             LocalDate fechaBoleta = LocalDate.of(anio, mes, 1);
             if (fechaBoleta.isBefore(LocalDate.now().minusYears(2))) {
                 boleta.setEstado("RESTRINGIDA");
             } else {
                 boleta.setEstado("DISPONIBLE");
             }
-
             return ResponseEntity.ok(boletaRepo.save(boleta));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("message", "Error: " + e.getMessage()));
@@ -95,7 +90,7 @@ public class GestionCorporativaController {
     }
 
     // ==========================================
-    //            DOCUMENTOS
+    //              DOCUMENTOS
     // ==========================================
 
     @GetMapping("/documentos/mis-documentos")
@@ -103,28 +98,96 @@ public class GestionCorporativaController {
         return docRepo.findByEmpleadoIdEmpleado(getEmpleadoActual().getIdEmpleado());
     }
 
-    // NUEVO: Historial Admin
     @GetMapping("/admin/documentos/historial")
     public List<DocumentoEmpleado> getHistorialDocumentos() {
         return docRepo.findAllByOrderByFechaSubidaDesc();
     }
 
-    // ACTUALIZADO: Subida con registro de Admin
+    // SUBIDA ADMIN (Crear Nuevo)
     @PostMapping("/admin/documentos/upload")
-    public ResponseEntity<?> subirDocumento(@RequestParam("idEmpleado") Integer idEmpleado,
-                                            @RequestParam("nombre") String nombre,
-                                            @RequestParam("tipo") String tipo,
-                                            @RequestParam("file") MultipartFile file) {
+    public ResponseEntity<?> subirDocumentoAdmin(@RequestParam("idEmpleado") Integer idEmpleado,
+                                                 @RequestParam("nombre") String nombre,
+                                                 @RequestParam("tipo") String tipo,
+                                                 @RequestParam("file") MultipartFile file) {
         try {
             String url = cloudinaryService.uploadFile(file);
             Empleado emp = empleadoRepo.findById(idEmpleado).orElseThrow();
-
             DocumentoEmpleado doc = new DocumentoEmpleado();
             doc.setEmpleado(emp);
             doc.setNombre(nombre);
             doc.setTipo(tipo);
             doc.setUrlArchivo(url);
-            doc.setSubidoPor(getUsernameActual()); // Guardamos quién subió
+            doc.setSubidoPor(getUsernameActual()); // Guarda email del admin
+            doc.setEstado("APROBADO"); // Si Admin sube (ej. contrato), nace aprobado
+            doc.setObservacion("Documento enviado por Administración");
+            return ResponseEntity.ok(docRepo.save(doc));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Error: " + e.getMessage()));
+        }
+    }
+
+    // SUBIDA EMPLEADO (Crear Nuevo)
+    @PostMapping("/empleado/documentos/upload")
+    public ResponseEntity<?> subirDocumentoEmpleado(@RequestParam("nombre") String nombre,
+                                                    @RequestParam("tipo") String tipo,
+                                                    @RequestParam("file") MultipartFile file) {
+        try {
+            String url = cloudinaryService.uploadFile(file);
+            DocumentoEmpleado doc = new DocumentoEmpleado();
+            doc.setEmpleado(getEmpleadoActual());
+            doc.setNombre(nombre);
+            doc.setTipo(tipo);
+            doc.setUrlArchivo(url);
+            doc.setSubidoPor("Empleado");
+            doc.setEstado("PENDIENTE");
+            return ResponseEntity.ok(docRepo.save(doc));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Error: " + e.getMessage()));
+        }
+    }
+
+    // --- NUEVO: REENVIAR / REEMPLAZAR ARCHIVO (Lógica Mixta) ---
+    @PutMapping(value = "/documentos/{id}/reemplazar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> reemplazarArchivoDocumento(@PathVariable Integer id,
+                                                        @RequestParam("file") MultipartFile file) {
+        try {
+            DocumentoEmpleado doc = docRepo.findById(id).orElseThrow(() -> new RuntimeException("Documento no encontrado"));
+
+            // 1. Subir nuevo archivo
+            String nuevaUrl = cloudinaryService.uploadFile(file);
+            doc.setUrlArchivo(nuevaUrl);
+
+            // 2. Lógica de Estado según Rol
+            if (isAdmin()) {
+                // Si es ADMIN (ej. subiendo contrato firmado), mantiene estado aprobado o lo fuerza.
+                doc.setObservacion("Archivo actualizado por Administración (Versión Final/Firmada)");
+                doc.setSubidoPor(getUsernameActual());
+                // Opcional: Asegurar que esté aprobado si admin lo toca
+                if("PENDIENTE".equals(doc.getEstado())) doc.setEstado("APROBADO");
+            } else {
+                // Si es EMPLEADO (reenvío por corrección)
+                doc.setEstado("PENDIENTE"); // Vuelve a pendiente para revisión
+                doc.setObservacion("Archivo corregido y reenviado por el empleado.");
+                doc.setSubidoPor("Empleado (Reenvío)");
+            }
+
+            return ResponseEntity.ok(docRepo.save(doc));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Error al reemplazar: " + e.getMessage()));
+        }
+    }
+
+    // GESTIÓN DE ESTADO (ADMIN - Aprobar/Rechazar sin cambiar archivo)
+    @PutMapping("/admin/documentos/{id}/estado")
+    public ResponseEntity<?> actualizarEstadoDocumento(@PathVariable Integer id,
+                                                       @RequestBody Map<String, String> payload) {
+        try {
+            DocumentoEmpleado doc = docRepo.findById(id).orElseThrow(() -> new RuntimeException("Doc no encontrado"));
+            String nuevoEstado = payload.get("estado");
+            String obs = payload.get("observacion");
+
+            if (nuevoEstado != null) doc.setEstado(nuevoEstado);
+            if (obs != null) doc.setObservacion(obs);
 
             return ResponseEntity.ok(docRepo.save(doc));
         } catch (Exception e) {
@@ -133,9 +196,8 @@ public class GestionCorporativaController {
     }
 
     // ==========================================
-    //            SOLICITUDES
+    //              SOLICITUDES
     // ==========================================
-
     @GetMapping("/solicitudes/mis-solicitudes")
     public List<Solicitud> getMisSolicitudes() {
         return solicitudRepo.findByEmpleadoIdEmpleadoOrderByCreadoEnDesc(getEmpleadoActual().getIdEmpleado());
@@ -147,34 +209,24 @@ public class GestionCorporativaController {
     }
 
     @PostMapping(value = "/solicitudes/crear", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> crearSolicitud(
-            @RequestParam("asunto") String asunto,
-            @RequestParam("detalle") String detalle,
-            @RequestParam("idTipo") Integer idTipo,
-            @RequestParam(value = "file", required = false) MultipartFile file
-    ) {
+    public ResponseEntity<?> crearSolicitud(@RequestParam("asunto") String asunto, @RequestParam("detalle") String detalle, @RequestParam("idTipo") Integer idTipo, @RequestParam(value = "file", required = false) MultipartFile file) {
         try {
             Solicitud solicitud = new Solicitud();
             solicitud.setEmpleado(getEmpleadoActual());
             solicitud.setAsunto(asunto);
             solicitud.setDetalle(detalle);
-
             TipoSolicitud tipo = new TipoSolicitud();
             tipo.setIdTipoSolicitud(idTipo);
             solicitud.setTipoSolicitud(tipo);
-
             EstadoSolicitud estado = new EstadoSolicitud();
             estado.setIdEstado(1);
             solicitud.setEstadoSolicitud(estado);
-
             if (file != null && !file.isEmpty()) {
                 String url = cloudinaryService.uploadFile(file);
                 solicitud.setUrlArchivo(url);
             }
-
             return ResponseEntity.ok(solicitudRepo.save(solicitud));
         } catch (Exception e) {
-            e.printStackTrace();
             return ResponseEntity.badRequest().body(Map.of("message", "Error al crear solicitud: " + e.getMessage()));
         }
     }
