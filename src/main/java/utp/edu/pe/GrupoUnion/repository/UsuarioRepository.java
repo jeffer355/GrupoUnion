@@ -12,7 +12,6 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Integer> {
     // Método para login
     Optional<Usuario> findByUsername(String username);
 
-    // --- ESTE ES EL MÉTODO QUE TE FALTA ---
     // Spring Boot implementará automáticamente la consulta "SELECT COUNT(*) > 0 ..."
     boolean existsByUsername(String username);
 }
