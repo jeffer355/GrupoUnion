@@ -28,7 +28,8 @@ public class AsistenciaManualController {
     private final UsuarioRepository usuarioRepository;
 
     // --- REGLAS DE NEGOCIO ---
-    private final LocalTime HORA_TOLERANCIA = LocalTime.of(8, 15); // 08:15 AM
+    private final LocalTime HORA_INICIO_JORNADA = LocalTime.of(8, 0);  // 08:00 AM
+    private final LocalTime HORA_TOLERANCIA = LocalTime.of(8, 15);     // 08:15 AM
     private final LocalTime HORA_SALIDA_OFICIAL = LocalTime.of(17, 0); // 05:00 PM
 
     public AsistenciaManualController(AsistenciaRepository asistenciaRepository, EmpleadoRepository empleadoRepository, UsuarioRepository usuarioRepository) {
@@ -62,7 +63,7 @@ public class AsistenciaManualController {
         }
     }
 
-    // 2. MARCAR ASISTENCIA (CORREGIDO: Devuelve el objeto actualizado)
+    // 2. MARCAR ASISTENCIA (CON RESTRICCIONES)
     @PostMapping("/marcar")
     public ResponseEntity<?> marcarAsistencia(@RequestBody Map<String, Object> payload, HttpServletRequest request) {
         try {
@@ -72,6 +73,7 @@ public class AsistenciaManualController {
 
             LocalDate hoy = LocalDate.now();
             LocalDateTime ahora = LocalDateTime.now();
+            LocalTime horaActual = ahora.toLocalTime();
             String infoCliente = getClientInfo(request);
 
             Asistencia asistencia = asistenciaRepository.findByEmpleadoAndFecha(emp, hoy).orElse(new Asistencia());
@@ -79,13 +81,18 @@ public class AsistenciaManualController {
             asistencia.setFecha(hoy);
 
             if ("ENTRADA".equals(tipo)) {
+                // RESTRICCIÓN 1: No marcar antes de las 8:00 AM
+                if (horaActual.isBefore(HORA_INICIO_JORNADA)) {
+                    return ResponseEntity.badRequest().body(Map.of("message", "No se permite marcar entrada antes de las 8:00 AM."));
+                }
+
                 if (asistencia.getHoraEntrada() != null) return ResponseEntity.badRequest().body(Map.of("message", "Entrada ya registrada."));
 
                 asistencia.setHoraEntrada(ahora);
                 asistencia.setOrigenEntrada(infoCliente);
 
-                // Lógica Tardanza
-                if (ahora.toLocalTime().isAfter(HORA_TOLERANCIA)) {
+                // Lógica Tardanza (Tolerancia 8:15)
+                if (horaActual.isAfter(HORA_TOLERANCIA)) {
                     asistencia.setEstado("TARDANZA");
                 } else {
                     asistencia.setEstado("PUNTUAL");
@@ -94,31 +101,29 @@ public class AsistenciaManualController {
             } else if ("SALIDA".equals(tipo)) {
                 if (asistencia.getHoraEntrada() == null) return ResponseEntity.badRequest().body(Map.of("message", "Debe marcar entrada primero."));
 
-                // Lógica Salida Anticipada
-                if (ahora.toLocalTime().isBefore(HORA_SALIDA_OFICIAL) && !confirmado) {
+                // RESTRICCIÓN 2: Advertencia si es antes de las 5:00 PM
+                if (horaActual.isBefore(HORA_SALIDA_OFICIAL) && !confirmado) {
                     return ResponseEntity.ok(Map.of(
                             "status", "CONFIRMATION_REQUIRED",
-                            "message", "Está intentando salir antes de las 17:00. ¿Confirmar salida anticipada?"
+                            "message", "La hora de salida válida es a partir de las 5:00 PM. ¿Desea marcar salida anticipada?"
                     ));
                 }
 
                 asistencia.setHoraSalida(ahora);
                 asistencia.setOrigenSalida(infoCliente);
 
-                if (ahora.toLocalTime().isBefore(HORA_SALIDA_OFICIAL)) {
+                if (horaActual.isBefore(HORA_SALIDA_OFICIAL)) {
                     String estadoPrevio = asistencia.getEstado();
                     asistencia.setEstado(estadoPrevio + " / SALIDA ANTICIPADA");
                 }
             }
 
-            // GUARDAMOS Y CAPTURAMOS EL OBJETO GUARDADO
             Asistencia asistenciaGuardada = asistenciaRepository.save(asistencia);
 
-            // RETORNAMOS EL OBJETO ACTUALIZADO EN LA RESPUESTA
             Map<String, Object> response = new HashMap<>();
             response.put("status", "SUCCESS");
-            response.put("message", "Marcación registrada.");
-            response.put("data", asistenciaGuardada); // <--- ESTO ES LA CLAVE
+            response.put("message", "Marcación registrada correctamente.");
+            response.put("data", asistenciaGuardada);
 
             return ResponseEntity.ok(response);
 
@@ -127,7 +132,23 @@ public class AsistenciaManualController {
         }
     }
 
-    // 3. REPORTE GENERAL DIARIO
+    // 3. NUEVO ENDPOINT: HISTORIAL PROPIO (Para el reporte del empleado)
+    @GetMapping("/mis-registros")
+    public ResponseEntity<?> getMisRegistros() {
+        try {
+            Empleado emp = getEmpleadoActual();
+            List<Asistencia> lista = asistenciaRepository.findAll().stream()
+                    .filter(a -> a.getEmpleado().getIdEmpleado().equals(emp.getIdEmpleado()))
+                    .sorted((a, b) -> b.getFecha().compareTo(a.getFecha())) // Ordenar descendente
+                    .limit(30) // Solo últimos 30 registros
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(lista);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    // 4. REPORTE GENERAL DIARIO (ADMIN)
     @GetMapping("/reporte-diario")
     public ResponseEntity<?> getReporteDiario(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
         LocalDate targetDate = (fecha != null) ? fecha : LocalDate.now();
@@ -159,7 +180,7 @@ public class AsistenciaManualController {
         return ResponseEntity.ok(reporte);
     }
 
-    // 4. HISTORIAL INDIVIDUAL
+    // 5. HISTORIAL INDIVIDUAL (ADMIN)
     @GetMapping("/historial/{idEmpleado}")
     public ResponseEntity<?> getHistorialEmpleado(@PathVariable Integer idEmpleado) {
         List<Asistencia> lista = asistenciaRepository.findAll().stream()
@@ -170,7 +191,7 @@ public class AsistenciaManualController {
         return ResponseEntity.ok(lista);
     }
 
-    // 5. EDICIÓN / JUSTIFICACIÓN
+    // 6. EDICIÓN / JUSTIFICACIÓN (ADMIN)
     @PutMapping("/actualizar/{id}")
     public ResponseEntity<?> actualizarRegistro(@PathVariable Integer id, @RequestBody Map<String, Object> payload) {
         Asistencia asis = asistenciaRepository.findById(id).orElseThrow(() -> new RuntimeException("No encontrado"));
