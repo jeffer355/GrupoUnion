@@ -63,12 +63,16 @@ public class AsistenciaManualController {
         }
     }
 
-    // 2. MARCAR ASISTENCIA (CON RESTRICCIONES)
+    // 2. MARCAR ASISTENCIA (MODIFICADO PARA OBSERVACIÓN)
     @PostMapping("/marcar")
     public ResponseEntity<?> marcarAsistencia(@RequestBody Map<String, Object> payload, HttpServletRequest request) {
         try {
             Empleado emp = getEmpleadoActual();
             String tipo = (String) payload.get("tipo");
+
+            // --- CAPTURAR OBSERVACIÓN DEL USUARIO ---
+            String obsUsuario = (String) payload.get("observacion");
+
             boolean confirmado = payload.containsKey("confirmado") && (boolean) payload.get("confirmado");
 
             LocalDate hoy = LocalDate.now();
@@ -80,18 +84,27 @@ public class AsistenciaManualController {
             asistencia.setEmpleado(emp);
             asistencia.setFecha(hoy);
 
+            // --- LÓGICA DE OBSERVACIÓN ---
+            if (obsUsuario != null && !obsUsuario.trim().isEmpty()) {
+                String notaFinal = "[" + tipo + "] " + obsUsuario;
+                if (asistencia.getObservacion() != null && !asistencia.getObservacion().isEmpty()) {
+                    // Si ya hay observación (ej. de la mañana), concatenamos
+                    asistencia.setObservacion(asistencia.getObservacion() + " | " + notaFinal);
+                } else {
+                    asistencia.setObservacion(notaFinal);
+                }
+            }
+            // -----------------------------
+
             if ("ENTRADA".equals(tipo)) {
-                // RESTRICCIÓN 1: No marcar antes de las 8:00 AM
                 if (horaActual.isBefore(HORA_INICIO_JORNADA)) {
                     return ResponseEntity.badRequest().body(Map.of("message", "No se permite marcar entrada antes de las 8:00 AM."));
                 }
-
                 if (asistencia.getHoraEntrada() != null) return ResponseEntity.badRequest().body(Map.of("message", "Entrada ya registrada."));
 
                 asistencia.setHoraEntrada(ahora);
                 asistencia.setOrigenEntrada(infoCliente);
 
-                // Lógica Tardanza (Tolerancia 8:15)
                 if (horaActual.isAfter(HORA_TOLERANCIA)) {
                     asistencia.setEstado("TARDANZA");
                 } else {
@@ -101,7 +114,6 @@ public class AsistenciaManualController {
             } else if ("SALIDA".equals(tipo)) {
                 if (asistencia.getHoraEntrada() == null) return ResponseEntity.badRequest().body(Map.of("message", "Debe marcar entrada primero."));
 
-                // RESTRICCIÓN 2: Advertencia si es antes de las 5:00 PM
                 if (horaActual.isBefore(HORA_SALIDA_OFICIAL) && !confirmado) {
                     return ResponseEntity.ok(Map.of(
                             "status", "CONFIRMATION_REQUIRED",
@@ -113,6 +125,7 @@ public class AsistenciaManualController {
                 asistencia.setOrigenSalida(infoCliente);
 
                 if (horaActual.isBefore(HORA_SALIDA_OFICIAL)) {
+                    // Mantenemos estado previo (ej. TARDANZA) y agregamos SALIDA ANTICIPADA
                     String estadoPrevio = asistencia.getEstado();
                     asistencia.setEstado(estadoPrevio + " / SALIDA ANTICIPADA");
                 }
@@ -132,15 +145,15 @@ public class AsistenciaManualController {
         }
     }
 
-    // 3. NUEVO ENDPOINT: HISTORIAL PROPIO (Para el reporte del empleado)
+    // 3. NUEVO ENDPOINT: HISTORIAL PROPIO
     @GetMapping("/mis-registros")
     public ResponseEntity<?> getMisRegistros() {
         try {
             Empleado emp = getEmpleadoActual();
             List<Asistencia> lista = asistenciaRepository.findAll().stream()
                     .filter(a -> a.getEmpleado().getIdEmpleado().equals(emp.getIdEmpleado()))
-                    .sorted((a, b) -> b.getFecha().compareTo(a.getFecha())) // Ordenar descendente
-                    .limit(30) // Solo últimos 30 registros
+                    .sorted((a, b) -> b.getFecha().compareTo(a.getFecha()))
+                    .limit(30)
                     .collect(Collectors.toList());
             return ResponseEntity.ok(lista);
         } catch (Exception e) {
