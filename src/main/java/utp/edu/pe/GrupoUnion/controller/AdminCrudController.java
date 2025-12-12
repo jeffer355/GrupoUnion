@@ -28,7 +28,7 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional; // Importante añadir esto si no está
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -285,11 +285,32 @@ public class AdminCrudController {
 
     @PutMapping("/usuarios")
     public ResponseEntity<?> updateUsuario(@RequestBody Usuario u) {
+
+        // 1. Verificar si el usuario existe y obtener sus datos actuales (incluyendo el hash de la contraseña)
+        Usuario existingUser = usuarioRepository.findById(u.getIdUsuario())
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado para actualizar."));
+
+        // 2. Actualizar datos de la Persona (nombre, email, foto, etc.) si se enviaron
         if (u.getPersona() != null) {
             personaRepository.save(u.getPersona());
+            existingUser.setPersona(u.getPersona()); // Actualizar la referencia por si es nueva
         }
-        return ResponseEntity.ok(usuarioRepository.save(u));
+
+        // 3. Actualizar campos de control (Rol y Estado)
+        if (u.getActivo() != null) existingUser.setActivo(u.getActivo());
+        if (u.getRol() != null) existingUser.setRol(u.getRol());
+        if (u.getRequiereCambioPass() != null) existingUser.setRequiereCambioPass(u.getRequiereCambioPass());
+
+        // 4. LÓGICA DE SEGURIDAD: Solo actualizar la contraseña si se envió un hash nuevo
+        // Esto previene que una simple actualización de datos personales (sin contraseña) borre el hash existente.
+        if (u.getHashPass() != null && !u.getHashPass().isEmpty()) {
+            existingUser.setHashPass(passwordEncoder.encode(u.getHashPass()));
+        }
+
+        // 5. Guardar el usuario actualizado
+        return ResponseEntity.ok(usuarioRepository.save(existingUser));
     }
+
 
     @DeleteMapping("/usuarios/{id}") public ResponseEntity<?> deleteUsuario(@PathVariable Integer id) { usuarioRepository.deleteById(id); return ResponseEntity.ok().build(); }
 
