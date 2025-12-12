@@ -1,50 +1,80 @@
-package utp.edu.pe.GrupoUnion.service;
+package utp.edu.pe.GrupoUnion.service; // <-- Manteniendo tu paquete original
 
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
+import com.mashape.unirest.http.HttpResponse;
+import com.mashape.unirest.http.Unirest;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 @Service
 public class EmailService {
 
-    private final JavaMailSender javaMailSender;
+    @Value("${BREVO_API_KEY}")
+    private String brevoApiKey;
 
-    @Value("${spring.mail.username}")
+
+    @Value("${spring.mail.username:no-responder@grupounion.pe}")
     private String remitente;
 
-    public EmailService(JavaMailSender javaMailSender) {
-        this.javaMailSender = javaMailSender;
-    }
+    // URL Fija de la API de Brevo para enviar correos transaccionales
+    private static final String BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
+
+
+    // Constructor eliminado: Ya no necesitamos inyectar JavaMailSender
 
     public void enviarToken(String destinatario, String token) {
         try {
-            // 1. Crear el mensaje Mime para soportar HTML
-            MimeMessage mimeMessage = javaMailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-
-            helper.setFrom(remitente);
-            helper.setTo(destinatario);
-            helper.setSubject("Código de Verificación - Grupo Unión");
-
-            // 2. Construir el contenido HTML profesional
+            // 1. Construir el contenido HTML profesional (APARIENCIA SIN CAMBIOS)
             String htmlContent = construirHtmlCorreo(token);
 
-            // 3. Establecer el contenido como HTML (el 'true' es importante)
-            helper.setText(htmlContent, true);
+            // 2. Crear el objeto JSON para el cuerpo de la petición API
+            JSONObject payload = new JSONObject();
 
-            // 4. Enviar
-            javaMailSender.send(mimeMessage);
-            System.out.println(">>> ✅ Correo HTML enviado a: " + destinatario);
+            // Remitente (De: Grupo Unión)
+            JSONObject sender = new JSONObject();
+            sender.put("email", remitente);
+            sender.put("name", "Grupo Unión");
+            payload.put("sender", sender);
 
-        } catch (MessagingException e) {
-            System.err.println(">>> ❌ Error enviando correo HTML: " + e.getMessage());
+            // Destinatario (Para: el usuario)
+            JSONArray toArray = new JSONArray();
+            JSONObject to = new JSONObject();
+            to.put("email", destinatario);
+            toArray.put(to);
+            payload.put("to", toArray);
+
+            // Asunto y Contenido
+            payload.put("subject", "Código de Verificación - Grupo Unión");
+            payload.put("htmlContent", htmlContent);
+
+            // 3. Ejecutar la petición POST a la API de Brevo usando Unirest
+            HttpResponse<String> response = Unirest.post(BREVO_API_URL)
+                    .header("accept", "application/json")
+                    .header("content-type", "application/json")
+                    // Autenticación crucial
+                    .header("api-key", brevoApiKey)
+                    .body(payload.toString())
+                    .asString();
+
+            // 4. Revisar la respuesta
+            if (response.getStatus() >= 200 && response.getStatus() < 300) {
+                System.out.println(">>> ✅ Correo HTML enviado via Brevo API a: " + destinatario);
+            } else {
+                System.err.println(">>> ❌ Error enviando correo HTML via Brevo. Status: " + response.getStatus() + " Body: " + response.getBody());
+                // Lanzar un error para que el flujo de negocio lo maneje
+                throw new RuntimeException("Fallo en el envío de correo con Brevo: " + response.getBody());
+            }
+
+        } catch (Exception e) {
+            System.err.println(">>> ❌ Error fatal en la comunicación API/Brevo: " + e.getMessage());
             e.printStackTrace();
+            // Esto asegura que el error se propague al controlador/servicio de login
+            throw new RuntimeException("Fallo al intentar enviar el token de seguridad.", e);
         }
     }
 
+    // Método de construcción de HTML se mantiene IDÉNTICO
     private String construirHtmlCorreo(String token) {
         // Colores corporativos (basados en la imagen que pasaste)
         String colorPrimario = "#003057"; // Azul oscuro tipo banco
@@ -52,7 +82,6 @@ public class EmailService {
         String colorFondo = "#f4f4f4";
 
         // URLs de imágenes (REEMPLÁZALAS CON TUS LINKS REALES DE CLOUDINARY O TU SERVIDOR)
-        // Si no tienes imágenes aún, usa estas de ejemplo o déjalas vacías, pero se verá mejor con ellas.
         String urlLogo = "https://i.postimg.cc/L6g22RSc/GRUPO-UNION-Photoroom.png"; // Icono genérico de empresa
         String urlBanner = "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?ixlib=rb-4.0.3&auto=format&fit=crop&w=1632&q=80"; // Imagen de oficina
 
