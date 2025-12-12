@@ -5,7 +5,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -17,6 +16,10 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import utp.edu.pe.GrupoUnion.service.impl.UserDetailsServiceImpl;
+// --- NUEVAS IMPORTACIONES REQUERIDAS ---
+import org.springframework.session.web.http.CookieSerializer;
+import org.springframework.session.web.http.DefaultCookieSerializer;
+// ----------------------------------------
 
 import java.util.Arrays;
 import java.util.List; // Importación necesaria para List.of
@@ -36,6 +39,24 @@ public class SecurityConfig {
         this.successHandler = successHandler;
         this.failureHandler = failureHandler;
     }
+
+    // ===============================================
+    // ✅ CORRECCIÓN CRÍTICA: CONFIGURACIÓN DE COOKIE DE SESIÓN
+    // Esto fuerza SameSite=None y Secure=true para funcionar entre Vercel/Render
+    // ===============================================
+    @Bean
+    public CookieSerializer cookieSerializer() {
+        DefaultCookieSerializer serializer = new DefaultCookieSerializer();
+        // Permite la transmisión de la cookie a través de dominios diferentes (cross-site)
+        serializer.setSameSite("None");
+        // Obliga a que la cookie solo se envíe sobre HTTPS (requerido cuando SameSite=None)
+        serializer.setUseSecureCookie(true);
+        // Opcional: Nombre de la cookie
+        serializer.setCookieName("JSESSIONID");
+        return serializer;
+    }
+    // ===============================================
+
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -89,6 +110,7 @@ public class SecurityConfig {
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "accept", "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"));
 
         // Permitir credenciales (cookies, headers de auth)
+        // **ESTA PARTE ES CORRECTA Y ES VITAL PARA EL FUNCIONAMIENTO DE LA COOKIE**
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
