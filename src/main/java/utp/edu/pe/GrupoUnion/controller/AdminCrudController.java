@@ -17,6 +17,8 @@ import utp.edu.pe.GrupoUnion.entity.core.Persona;
 import utp.edu.pe.GrupoUnion.entity.management.BoletaPago;
 import utp.edu.pe.GrupoUnion.entity.management.Contrato;
 import utp.edu.pe.GrupoUnion.payload.AreaResumenDTO;
+// IMPORTANTE: Importar el DTO de Empleado para la optimización
+import utp.edu.pe.GrupoUnion.payload.EmpleadoResumenDTO;
 import utp.edu.pe.GrupoUnion.repository.*;
 import utp.edu.pe.GrupoUnion.service.CloudinaryService;
 import utp.edu.pe.GrupoUnion.service.ContratoPdfService;
@@ -302,7 +304,6 @@ public class AdminCrudController {
         if (u.getRequiereCambioPass() != null) existingUser.setRequiereCambioPass(u.getRequiereCambioPass());
 
         // 4. LÓGICA DE SEGURIDAD: Solo actualizar la contraseña si se envió un hash nuevo
-        // Esto previene que una simple actualización de datos personales (sin contraseña) borre el hash existente.
         if (u.getHashPass() != null && !u.getHashPass().isEmpty()) {
             existingUser.setHashPass(passwordEncoder.encode(u.getHashPass()));
         }
@@ -314,7 +315,16 @@ public class AdminCrudController {
 
     @DeleteMapping("/usuarios/{id}") public ResponseEntity<?> deleteUsuario(@PathVariable Integer id) { usuarioRepository.deleteById(id); return ResponseEntity.ok().build(); }
 
-    @GetMapping("/empleados") public List<Empleado> getAllEmpleados() { return empleadoRepository.findAll(); }
+    // ==========================================
+    // ✅ OPTIMIZACIÓN DE RENDIMIENTO: EMPLEADOS
+    // ==========================================
+    // CAMBIO: Ahora devuelve EmpleadoResumenDTO
+    @GetMapping("/empleados")
+    public List<EmpleadoResumenDTO> getAllEmpleados() {
+        // Llama al método optimizado en el repositorio
+        return empleadoRepository.findAllResumen();
+    }
+
     @PostMapping("/empleados") public ResponseEntity<?> createEmpleado(@RequestBody Empleado e) { personaRepository.save(e.getPersona()); return ResponseEntity.ok(empleadoRepository.save(e)); }
     @PutMapping("/empleados") public ResponseEntity<?> updateEmpleado(@RequestBody Empleado e) { personaRepository.save(e.getPersona()); return ResponseEntity.ok(empleadoRepository.save(e)); }
     @DeleteMapping("/empleados/{id}") public ResponseEntity<?> deleteEmpleado(@PathVariable Integer id) { empleadoRepository.deleteById(id); return ResponseEntity.ok().build(); }
