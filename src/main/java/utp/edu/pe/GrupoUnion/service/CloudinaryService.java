@@ -13,16 +13,12 @@ public class CloudinaryService {
 
     private final Cloudinary cloudinary;
 
-    public CloudinaryService() {
-        // Configuración directa
-        this.cloudinary = new Cloudinary(ObjectUtils.asMap(
-                "cloud_name", "dhcqmb3rb",
-                "api_key", "529543174157466",
-                "api_secret", "YvqDf9rLzVh3MeFiMlCtHDicFdg"
-        ));
+    // Inyección por constructor (Best Practice)
+    public CloudinaryService(Cloudinary cloudinary) {
+        this.cloudinary = cloudinary;
     }
 
-    // Método para subir archivos desde el Frontend (MultipartFile)
+    // Método para subir archivos desde el Frontend
     public String uploadFile(MultipartFile file) throws IOException {
         Map params = ObjectUtils.asMap(
                 "resource_type", "auto",
@@ -32,20 +28,17 @@ public class CloudinaryService {
         return (String) uploadResult.get("secure_url");
     }
 
-    // --- ESTE ES EL MÉTODO QUE NECESITAS PARA LAS BOLETAS ---
-    // Método público para subir bytes (PDFs generados en Backend)
+    // Método para subir bytes (PDFs generados en Backend)
     public String uploadBytes(byte[] bytes, String fileName) throws IOException {
         Map params = ObjectUtils.asMap(
                 "resource_type", "auto",
                 "folder", "grupo_union_boletas",
                 "public_id", fileName
         );
-        // Accedemos a 'uploader()' aquí dentro, donde sí tenemos permiso
         Map uploadResult = cloudinary.uploader().upload(bytes, params);
         return (String) uploadResult.get("secure_url");
     }
 
-    // Getter opcional por si necesitaras acceso directo (aunque es mejor usar uploadBytes)
     public Cloudinary getCloudinary() {
         return cloudinary;
     }

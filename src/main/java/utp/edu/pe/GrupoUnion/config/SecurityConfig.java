@@ -38,24 +38,14 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // 1. Configuración de CORS
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-
-                // 2. Desactivar CSRF (común en APIs REST)
                 .csrf(csrf -> csrf.disable())
-
-                // 3. Configuración de Rutas y Permisos
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/public/**", "/api/auth/**").permitAll()
-
-                        // SOLUCIÓN AL ERROR 403: Usamos hasAuthority
                         .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
                         .requestMatchers("/api/empleado/**").hasAuthority("EMPLEADO")
-
                         .anyRequest().authenticated()
                 )
-
-                // 4. Configuración de Logout
                 .logout(logout -> logout
                         .logoutUrl("/logout")
                         .logoutSuccessHandler((req, res, auth) -> res.setStatus(200))
@@ -69,16 +59,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Permitir solo el origen de Angular
-        configuration.setAllowedOrigins(List.of("http://localhost:4200"));
 
-        // Métodos permitidos
+        // --- CAMBIO CLAVE PARA RENDER/VERCEL ---
+        // Usamos setAllowedOriginPatterns("*") para permitir conexión desde Vercel
+        configuration.setAllowedOriginPatterns(List.of("*"));
+
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-
-        // Cabeceras permitidas
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "accept", "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"));
-
-        // VITAL PARA QUE LA COOKIE LLEGUE AL BACKEND
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
