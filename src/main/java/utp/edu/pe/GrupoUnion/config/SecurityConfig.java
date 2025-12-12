@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.Customizer; // Importante para httpBasic
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -19,15 +19,13 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import utp.edu.pe.GrupoUnion.service.impl.UserDetailsServiceImpl;
 
 import java.util.Arrays;
-import java.util.List;
+import java.util.List; // Importación necesaria para List.of
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     private final UserDetailsServiceImpl userDetailsService;
-    // Mantenemos tus handlers inyectados para no romper dependencias,
-    // aunque no los uses explícitamente en este chain básico.
     private final AuthHandlers.CustomSuccessHandler successHandler;
     private final AuthHandlers.CustomFailureHandler failureHandler;
 
@@ -82,20 +80,23 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // --- CONFIGURACIÓN FLEXIBLE PARA VERCEL ---
-        // setAllowedOriginPatterns("*") es más seguro que setAllowedOrigins("*")
-        // cuando usas credenciales (cookies/tokens).
-        configuration.setAllowedOriginPatterns(List.of("*"));
+        // ** APLICANDO SOLUCIÓN CORS ESPECÍFICA PARA TU FRONTEND DE VERCEL **
+        // Se reemplaza List.of("*") por la URL exacta para mejor seguridad
+        // y compatibilidad con navegadores/autenticación.
+        configuration.setAllowedOrigins(List.of("https://front-grupo-union.vercel.app"));
+        // NOTA: Si tu frontend está usando http://localhost:PORT para desarrollo,
+        // puedes agregar esa URL aquí temporalmente: List.of("https://front-grupo-union.vercel.app", "http://localhost:3000")
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 
-        // Headers permitidos (agregué Authorization que suele faltar)
+        // Headers permitidos (Necesarios para enviar el token JWT)
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "accept", "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"));
 
         // Permitir credenciales (cookies, headers de auth)
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        // Aplicar esta configuración CORS a todas las rutas de la API (/**)
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
