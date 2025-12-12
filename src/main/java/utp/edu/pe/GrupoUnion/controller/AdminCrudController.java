@@ -12,13 +12,12 @@ import utp.edu.pe.GrupoUnion.entity.catalogs.Departamento;
 import utp.edu.pe.GrupoUnion.entity.catalogs.RegimenPensionario;
 import utp.edu.pe.GrupoUnion.entity.catalogs.TipoContrato;
 import utp.edu.pe.GrupoUnion.entity.catalogs.TipoDocumento;
-import utp.edu.pe.GrupoUnion.entity.core.Empleado;
+import utp.edu.pe.GrupoUnion.entity.core.Empleado; // Importación necesaria
 import utp.edu.pe.GrupoUnion.entity.core.Persona;
 import utp.edu.pe.GrupoUnion.entity.management.BoletaPago;
 import utp.edu.pe.GrupoUnion.entity.management.Contrato;
 import utp.edu.pe.GrupoUnion.payload.AreaResumenDTO;
-// IMPORTANTE: Importar el DTO de Empleado para la optimización
-import utp.edu.pe.GrupoUnion.payload.EmpleadoResumenDTO;
+// IMPORTANTE: Mantenemos el DTO en el import para no romper otras partes que lo usen
 import utp.edu.pe.GrupoUnion.repository.*;
 import utp.edu.pe.GrupoUnion.service.CloudinaryService;
 import utp.edu.pe.GrupoUnion.service.ContratoPdfService;
@@ -316,13 +315,14 @@ public class AdminCrudController {
     @DeleteMapping("/usuarios/{id}") public ResponseEntity<?> deleteUsuario(@PathVariable Integer id) { usuarioRepository.deleteById(id); return ResponseEntity.ok().build(); }
 
     // ==========================================
-    // ✅ OPTIMIZACIÓN DE RENDIMIENTO: EMPLEADOS
+    // ✅ REVERSIÓN A MÉTODO FUNCIONAL: EMPLEADOS
     // ==========================================
-    // CAMBIO: Ahora devuelve EmpleadoResumenDTO
+    // NOTA: Se revierte a devolver la entidad completa 'Empleado' (que funcionaba antes)
     @GetMapping("/empleados")
-    public List<EmpleadoResumenDTO> getAllEmpleados() {
-        // Llama al método optimizado en el repositorio
-        return empleadoRepository.findAllResumen();
+    // CAMBIO: Se revierte el tipo de retorno de List<EmpleadoResumenDTO> a List<Empleado>
+    public List<Empleado> getAllEmpleados() {
+        // CAMBIO: Se llama a findAll() en lugar del método optimizado findAllResumen()
+        return empleadoRepository.findAll();
     }
 
     @PostMapping("/empleados") public ResponseEntity<?> createEmpleado(@RequestBody Empleado e) { personaRepository.save(e.getPersona()); return ResponseEntity.ok(empleadoRepository.save(e)); }
