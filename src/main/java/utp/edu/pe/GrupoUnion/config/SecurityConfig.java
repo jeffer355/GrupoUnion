@@ -9,20 +9,19 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy; // 👈 NECESARIO para STATELESS
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter; // 👈 NECESARIO para el filtro JWT
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import utp.edu.pe.GrupoUnion.service.impl.UserDetailsServiceImpl;
-// --- NUEVAS IMPORTACIONES REQUERIDAS ---
-import org.springframework.session.web.http.CookieSerializer;
-import org.springframework.session.web.http.DefaultCookieSerializer;
-// ----------------------------------------
+import utp.edu.pe.GrupoUnion.filter.JwtAuthFilter; // 👈 IMPORTANTE: Debes tener esta clase creada
 
 import java.util.Arrays;
-import java.util.List; // Importación necesaria para List.of
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -31,69 +30,53 @@ public class SecurityConfig {
     private final UserDetailsServiceImpl userDetailsService;
     private final AuthHandlers.CustomSuccessHandler successHandler;
     private final AuthHandlers.CustomFailureHandler failureHandler;
+    private final JwtAuthFilter jwtAuthFilter; // 👈 Inyección del filtro JWT
 
     public SecurityConfig(UserDetailsServiceImpl userDetailsService,
                           AuthHandlers.CustomSuccessHandler successHandler,
-                          AuthHandlers.CustomFailureHandler failureHandler) {
+                          AuthHandlers.CustomFailureHandler failureHandler,
+                          JwtAuthFilter jwtAuthFilter) { // 👈 Constructor actualizado
         this.userDetailsService = userDetailsService;
         this.successHandler = successHandler;
         this.failureHandler = failureHandler;
+        this.jwtAuthFilter = jwtAuthFilter; // 👈 Asignación
     }
 
-    // ===============================================
-    // ✅ CORRECCIÓN CRÍTICA: CONFIGURACIÓN DE COOKIE DE SESIÓN
-    // Esto fuerza SameSite=None y Secure=true para funcionar entre Vercel/Render
-    // ===============================================
-    @Bean
-    public CookieSerializer cookieSerializer() {
-        DefaultCookieSerializer serializer = new DefaultCookieSerializer();
-        // Permite la transmisión de la cookie a través de dominios diferentes (cross-site)
-        serializer.setSameSite("None");
-        // Obliga a que la cookie solo se envíe sobre HTTPS (requerido cuando SameSite=None)
-        serializer.setUseSecureCookie(true);
-        // Opcional: Nombre de la cookie
-        serializer.setCookieName("JSESSIONID");
-        return serializer;
-    }
-    // ===============================================
-
+    // ELIMINAMOS el @Bean public CookieSerializer() {...}
+    // Ya no se necesita al migrar a JWT.
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // 1. Configuración de CORS (Usa el Bean de abajo)
+                // 1. Configuración de CORS
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
 
-                // 2. Desactivar CSRF (Necesario para APIs REST)
+                // 2. Desactivar CSRF
                 .csrf(AbstractHttpConfigurer::disable)
 
-                // 3. Reglas de Autorización
+                // 3. CRÍTICO: Configurar el manejo de sesión como SIN ESTADO (STATELESS)
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+
+                // 4. Reglas de Autorización
                 .authorizeHttpRequests(auth -> auth
-                        // --- VITAL PARA RENDER ---
-                        .requestMatchers("/actuator/**").permitAll() // Permite el Health Check
+                        // --- RUTAS PÚBLICAS Y LOGIN (acceso al AuthController) ---
+                        .requestMatchers("/actuator/**", "/api/public/**", "/api/auth/**").permitAll()
 
-                        // --- RUTAS PÚBLICAS ---
-                        .requestMatchers("/api/public/**", "/api/auth/**").permitAll()
-
-                        // --- RUTAS PROTEGIDAS POR ROL ---
+                        // --- RUTAS PROTEGIDAS POR ROL (Ahora protegidas por JWT) ---
                         .requestMatchers("/api/admin/**").hasAuthority("ADMIN")
                         .requestMatchers("/api/empleado/**").hasAuthority("EMPLEADO")
 
-                        // Todo lo demás requiere autenticación
+                        // Todo lo demás requiere un token válido
                         .anyRequest().authenticated()
                 )
 
-                // 4. Soporte Básico (Útil para depurar si falla el JWT)
-                //.httpBasic(Customizer.withDefaults())
+                // 5. INYECCIÓN DEL FILTRO JWT (CRÍTICO para validar el token)
+                .authenticationProvider(authenticationProvider())
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
-                // 5. Configuración de Logout
-                .logout(logout -> logout
-                        .logoutUrl("/logout")
-                        .logoutSuccessHandler((req, res, auth) -> res.setStatus(200))
-                        .deleteCookies("JSESSIONID")
-                        .permitAll()
-                );
-
+        // Eliminamos el .logout que manipulaba la cookie JSESSIONID, ya que no aplica para JWT.
         return http.build();
     }
 
@@ -101,20 +84,17 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-
         configuration.setAllowedOrigins(List.of("https://front-grupo-union.vercel.app"));
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 
-        // Headers permitidos (Necesarios para enviar el token JWT)
+        // Headers permitidos (Necesarios para enviar el token JWT: Authorization)
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "accept", "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"));
 
-        // Permitir credenciales (cookies, headers de auth)
-        // **ESTA PARTE ES CORRECTA Y ES VITAL PARA EL FUNCIONAMIENTO DE LA COOKIE**
-        configuration.setAllowCredentials(true);
+        // Permitir credenciales (cookies) -> Cambiado a 'false' ya que usamos JWT
+        configuration.setAllowCredentials(false);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        // Aplicar esta configuración CORS a todas las rutas de la API (/**)
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }

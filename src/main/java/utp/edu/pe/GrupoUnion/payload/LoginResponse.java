@@ -13,4 +13,7 @@ public class LoginResponse {
     private String role;
     private String redirectUrl;
     private String username;
+
+    // ✅ CAMBIO CRÍTICO: Campo para el token JWT
+    private String token;
 }

@@ -2,22 +2,26 @@ package utp.edu.pe.GrupoUnion.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired; // Añadido para inyectar JwtService
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.context.SecurityContextHolderStrategy;
+// Las siguientes importaciones son eliminadas ya que no usamos sesiones:
+// import org.springframework.security.core.Authentication;
+// import org.springframework.security.core.context.SecurityContext;
+// import org.springframework.security.core.context.SecurityContextHolder;
+// import org.springframework.security.core.context.SecurityContextHolderStrategy;
+// import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+// import org.springframework.security.web.context.SecurityContextRepository;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
-import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.bind.annotation.*;
 import utp.edu.pe.GrupoUnion.entity.auth.Usuario;
 import utp.edu.pe.GrupoUnion.payload.LoginRequest;
 import utp.edu.pe.GrupoUnion.payload.LoginResponse;
 import utp.edu.pe.GrupoUnion.repository.UsuarioRepository;
 import utp.edu.pe.GrupoUnion.service.EmailService;
+import utp.edu.pe.GrupoUnion.service.JwtService; // 👈 CRÍTICO: Importar el servicio JWT
 
 import java.util.*;
 
@@ -30,8 +34,10 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
 
-    private final SecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
-    private final SecurityContextHolderStrategy securityContextHolderStrategy = SecurityContextHolder.getContextHolderStrategy();
+    @Autowired
+    private JwtService jwtService; // 👈 Inyectamos el servicio JWT
+
+    // Eliminamos las variables de manejo de sesión de Spring Security (HttpSessionSecurityContextRepository, etc.)
 
     public AuthController(AuthenticationManager authenticationManager,
                           UsuarioRepository usuarioRepository,
@@ -43,7 +49,7 @@ public class AuthController {
         this.emailService = emailService;
     }
 
-    // PASO 1: Validar credenciales iniciales
+    // PASO 1: Validar credenciales iniciales (SIN CAMBIOS)
     @PostMapping("/login-step1")
     public ResponseEntity<?> loginStep1(@RequestBody LoginRequest loginRequest) {
         try {
@@ -65,7 +71,7 @@ public class AuthController {
         }
     }
 
-    // PASO 2: Cambiar contraseña (Primer ingreso)
+    // PASO 2: Cambiar contraseña (Primer ingreso) (SIN CAMBIOS)
     @PostMapping("/change-password")
     public ResponseEntity<?> changePassword(@RequestBody Map<String, String> request) {
         String username = request.get("username");
@@ -81,7 +87,7 @@ public class AuthController {
         return generarYEnviarToken(usuario);
     }
 
-    // PASO 3: Verificar Token y Login Final
+    // PASO 3: Verificar Token 2FA y Login Final (MODIFICADO para JWT)
     @PostMapping("/verify-2fa")
     public ResponseEntity<?> verify2FA(@RequestBody Map<String, String> request,
                                        HttpServletRequest req, HttpServletResponse res) {
@@ -91,23 +97,23 @@ public class AuthController {
         Usuario usuario = usuarioRepository.findByUsername(username).orElse(null);
 
         if (usuario != null && tokenIngresado.equals(usuario.getToken2fa())) {
-            // Token correcto: Limpiamos y logueamos
+            // Token 2FA correcto: Limpiamos token y GENERAMOS JWT
             usuario.setToken2fa(null);
             usuarioRepository.save(usuario);
 
-            Authentication authentication = new UsernamePasswordAuthenticationToken(
-                    usuario.getUsername(), null, List.of(() -> usuario.getRol().getNombre())
-            );
-
-            SecurityContext context = securityContextHolderStrategy.createEmptyContext();
-            context.setAuthentication(authentication);
-            securityContextHolderStrategy.setContext(context);
-            securityContextRepository.saveContext(context, req, res);
-
             String role = usuario.getRol().getNombre();
-            String redirectUrl = role.equals("ADMIN") ? "/admin" : "/empleado-dashboard";
 
-            return ResponseEntity.ok(new LoginResponse("success", "Bienvenido", role, redirectUrl, username));
+            // 1. Generar el token JWT
+            List<String> roles = List.of(role);
+            String jwt = jwtService.generateToken(username, roles); // 👈 Genera el token JWT
+
+            // 2. Ya NO manipulamos el SecurityContext (eliminamos todo el código de sesión)
+
+            String redirectUrl = role.equals("ADMIN") ? "/admin/home" : "/empleado-dashboard";
+
+            // 3. Devolver la respuesta con el JWT
+            // Nota: Se asume que LoginResponse en el backend ya tiene el campo 'token'
+            return ResponseEntity.ok(new LoginResponse("success", "Bienvenido", role, redirectUrl, username, jwt));
         }
 
         return ResponseEntity.status(401).body(Map.of("status", "error", "message", "Código incorrecto"));
