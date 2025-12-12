@@ -63,7 +63,7 @@ public class SecurityConfig {
                 )
 
                 // 4. Soporte Básico (Útil para depurar si falla el JWT)
-                .httpBasic(Customizer.withDefaults())
+                //.httpBasic(Customizer.withDefaults())
 
                 // 5. Configuración de Logout
                 .logout(logout -> logout
@@ -80,12 +80,8 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // ** APLICANDO SOLUCIÓN CORS ESPECÍFICA PARA TU FRONTEND DE VERCEL **
-        // Se reemplaza List.of("*") por la URL exacta para mejor seguridad
-        // y compatibilidad con navegadores/autenticación.
+
         configuration.setAllowedOrigins(List.of("https://front-grupo-union.vercel.app"));
-        // NOTA: Si tu frontend está usando http://localhost:PORT para desarrollo,
-        // puedes agregar esa URL aquí temporalmente: List.of("https://front-grupo-union.vercel.app", "http://localhost:3000")
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 
