@@ -27,10 +27,11 @@ public class AsistenciaManualController {
     private final EmpleadoRepository empleadoRepository;
     private final UsuarioRepository usuarioRepository;
 
-    // --- REGLAS DE NEGOCIO ---
-    private final LocalTime HORA_INICIO_JORNADA = LocalTime.of(8, 0);  // 08:00 AM
-    private final LocalTime HORA_TOLERANCIA = LocalTime.of(8, 15);     // 08:15 AM
-    private final LocalTime HORA_SALIDA_OFICIAL = LocalTime.of(17, 0); // 05:00 PM
+    // --- REGLAS DE HORARIO ---
+    private final LocalTime HORA_INICIO_JORNADA = LocalTime.of(8, 0);    // 08:00 AM
+    private final LocalTime HORA_FIN_TOLERANCIA = LocalTime.of(8, 30);   // 08:30 AM
+    private final LocalTime HORA_LIMITE_TARDANZA = LocalTime.of(10, 0);  // 10:00 AM
+    private final LocalTime HORA_SALIDA_OFICIAL = LocalTime.of(17, 0);   // 05:00 PM
 
     public AsistenciaManualController(AsistenciaRepository asistenciaRepository, EmpleadoRepository empleadoRepository, UsuarioRepository usuarioRepository) {
         this.asistenciaRepository = asistenciaRepository;
@@ -52,7 +53,6 @@ public class AsistenciaManualController {
         return "IP: " + ip;
     }
 
-    // 1. ESTADO DE HOY
     @GetMapping("/hoy")
     public ResponseEntity<?> getAsistenciaHoy() {
         try {
@@ -63,16 +63,13 @@ public class AsistenciaManualController {
         }
     }
 
-    // 2. MARCAR ASISTENCIA (MODIFICADO PARA OBSERVACIÓN)
+    // --- MÉTODO PRINCIPAL CON LA NUEVA LÓGICA ---
     @PostMapping("/marcar")
     public ResponseEntity<?> marcarAsistencia(@RequestBody Map<String, Object> payload, HttpServletRequest request) {
         try {
             Empleado emp = getEmpleadoActual();
             String tipo = (String) payload.get("tipo");
-
-            // --- CAPTURAR OBSERVACIÓN DEL USUARIO ---
             String obsUsuario = (String) payload.get("observacion");
-
             boolean confirmado = payload.containsKey("confirmado") && (boolean) payload.get("confirmado");
 
             LocalDate hoy = LocalDate.now();
@@ -84,58 +81,82 @@ public class AsistenciaManualController {
             asistencia.setEmpleado(emp);
             asistencia.setFecha(hoy);
 
-            // --- LÓGICA DE OBSERVACIÓN ---
-            if (obsUsuario != null && !obsUsuario.trim().isEmpty()) {
-                String notaFinal = "[" + tipo + "] " + obsUsuario;
-                if (asistencia.getObservacion() != null && !asistencia.getObservacion().isEmpty()) {
-                    // Si ya hay observación (ej. de la mañana), concatenamos
-                    asistencia.setObservacion(asistencia.getObservacion() + " | " + notaFinal);
-                } else {
-                    asistencia.setObservacion(notaFinal);
-                }
-            }
-            // -----------------------------
-
+            // ==========================================
+            //            LÓGICA DE ENTRADA
+            // ==========================================
             if ("ENTRADA".equals(tipo)) {
+                // 1. Bloqueo estricto antes de las 8:00 AM
                 if (horaActual.isBefore(HORA_INICIO_JORNADA)) {
                     return ResponseEntity.badRequest().body(Map.of("message", "No se permite marcar entrada antes de las 8:00 AM."));
                 }
-                if (asistencia.getHoraEntrada() != null) return ResponseEntity.badRequest().body(Map.of("message", "Entrada ya registrada."));
+
+                if (asistencia.getHoraEntrada() != null) {
+                    return ResponseEntity.badRequest().body(Map.of("message", "Entrada ya registrada."));
+                }
 
                 asistencia.setHoraEntrada(ahora);
                 asistencia.setOrigenEntrada(infoCliente);
 
-                if (horaActual.isAfter(HORA_TOLERANCIA)) {
+                // --- EVALUACIÓN DE ESTADO SEGÚN HORA ---
+
+                // NUEVA REGLA: Si marca entrada después de la hora de salida (5:00 PM)
+                if (horaActual.isAfter(HORA_SALIDA_OFICIAL)) {
+                    asistencia.setEstado("FALTA");
+                    appendObservacion(asistencia, "Falta injustificada");
+                }
+                // Regla existente: Después de las 10:00 AM
+                else if (horaActual.isAfter(HORA_LIMITE_TARDANZA)) {
+                    asistencia.setEstado("FALTA");
+                    appendObservacion(asistencia, "Entrada muy tarde injustificada");
+                }
+                // Regla existente: Entre 8:31 y 10:00
+                else if (horaActual.isAfter(HORA_FIN_TOLERANCIA)) {
                     asistencia.setEstado("TARDANZA");
-                } else {
+                }
+                // Regla existente: Entre 8:00 y 8:30
+                else {
                     asistencia.setEstado("PUNTUAL");
                 }
 
-            } else if ("SALIDA".equals(tipo)) {
-                if (asistencia.getHoraEntrada() == null) return ResponseEntity.badRequest().body(Map.of("message", "Debe marcar entrada primero."));
+            }
+            // ==========================================
+            //            LÓGICA DE SALIDA
+            // ==========================================
+            else if ("SALIDA".equals(tipo)) {
+                if (asistencia.getHoraEntrada() == null) {
+                    return ResponseEntity.badRequest().body(Map.of("message", "Debe marcar entrada primero."));
+                }
+                if (asistencia.getHoraSalida() != null) {
+                    return ResponseEntity.badRequest().body(Map.of("message", "Salida ya registrada."));
+                }
 
-                if (horaActual.isBefore(HORA_SALIDA_OFICIAL) && !confirmado) {
-                    return ResponseEntity.ok(Map.of(
-                            "status", "CONFIRMATION_REQUIRED",
-                            "message", "La hora de salida válida es a partir de las 5:00 PM. ¿Desea marcar salida anticipada?"
-                    ));
+                // Salida antes de las 5:00 PM
+                if (horaActual.isBefore(HORA_SALIDA_OFICIAL)) {
+                    if (!confirmado) {
+                        return ResponseEntity.ok(Map.of(
+                                "status", "CONFIRMATION_REQUIRED",
+                                "message", "Salida antes de las 5:00 PM se registrará como FALTA (Salida injustificada). ¿Continuar?"
+                        ));
+                    }
+                    // Si confirma, se marca FALTA
+                    asistencia.setEstado("FALTA");
+                    appendObservacion(asistencia, "Salida injustificada");
                 }
 
                 asistencia.setHoraSalida(ahora);
                 asistencia.setOrigenSalida(infoCliente);
+            }
 
-                if (horaActual.isBefore(HORA_SALIDA_OFICIAL)) {
-                    // Mantenemos estado previo (ej. TARDANZA) y agregamos SALIDA ANTICIPADA
-                    String estadoPrevio = asistencia.getEstado();
-                    asistencia.setEstado(estadoPrevio + " / SALIDA ANTICIPADA");
-                }
+            // Guardar observación manual del usuario si existe
+            if (obsUsuario != null && !obsUsuario.trim().isEmpty()) {
+                appendObservacion(asistencia, "[" + tipo + "] " + obsUsuario);
             }
 
             Asistencia asistenciaGuardada = asistenciaRepository.save(asistencia);
 
             Map<String, Object> response = new HashMap<>();
             response.put("status", "SUCCESS");
-            response.put("message", "Marcación registrada correctamente.");
+            response.put("message", "Marcación registrada. Estado: " + asistencia.getEstado());
             response.put("data", asistenciaGuardada);
 
             return ResponseEntity.ok(response);
@@ -145,7 +166,15 @@ public class AsistenciaManualController {
         }
     }
 
-    // 3. NUEVO ENDPOINT: HISTORIAL PROPIO
+    private void appendObservacion(Asistencia a, String nuevaObs) {
+        if (a.getObservacion() != null && !a.getObservacion().isEmpty()) {
+            a.setObservacion(a.getObservacion() + " | " + nuevaObs);
+        } else {
+            a.setObservacion(nuevaObs);
+        }
+    }
+
+    // --- MÉTODOS DE CONSULTA (SIN CAMBIOS) ---
     @GetMapping("/mis-registros")
     public ResponseEntity<?> getMisRegistros() {
         try {
@@ -161,7 +190,6 @@ public class AsistenciaManualController {
         }
     }
 
-    // 4. REPORTE GENERAL DIARIO (ADMIN)
     @GetMapping("/reporte-diario")
     public ResponseEntity<?> getReporteDiario(@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
         LocalDate targetDate = (fecha != null) ? fecha : LocalDate.now();
@@ -171,7 +199,6 @@ public class AsistenciaManualController {
         for (Empleado emp : todosEmpleados) {
             Optional<Asistencia> asisOpt = asistenciaRepository.findByEmpleadoAndFecha(emp, targetDate);
             Map<String, Object> fila = new HashMap<>();
-
             fila.put("idEmpleado", emp.getIdEmpleado());
             fila.put("empleadoNombre", emp.getPersona().getNombres());
             fila.put("departamento", emp.getDepartamento().getNombre());
@@ -193,32 +220,26 @@ public class AsistenciaManualController {
         return ResponseEntity.ok(reporte);
     }
 
-    // 5. HISTORIAL INDIVIDUAL (ADMIN)
     @GetMapping("/historial/{idEmpleado}")
     public ResponseEntity<?> getHistorialEmpleado(@PathVariable Integer idEmpleado) {
         List<Asistencia> lista = asistenciaRepository.findAll().stream()
                 .filter(a -> a.getEmpleado().getIdEmpleado().equals(idEmpleado))
                 .sorted((a, b) -> b.getFecha().compareTo(a.getFecha()))
                 .collect(Collectors.toList());
-
         return ResponseEntity.ok(lista);
     }
 
-    // 6. EDICIÓN / JUSTIFICACIÓN (ADMIN)
     @PutMapping("/actualizar/{id}")
     public ResponseEntity<?> actualizarRegistro(@PathVariable Integer id, @RequestBody Map<String, Object> payload) {
         Asistencia asis = asistenciaRepository.findById(id).orElseThrow(() -> new RuntimeException("No encontrado"));
-
         if (payload.containsKey("estado")) asis.setEstado((String) payload.get("estado"));
         if (payload.containsKey("observacion")) asis.setObservacion((String) payload.get("observacion"));
-
         if (payload.containsKey("horaEntrada") && payload.get("horaEntrada") != null) {
             asis.setHoraEntrada(LocalDateTime.parse((String)payload.get("horaEntrada")));
         }
         if (payload.containsKey("horaSalida") && payload.get("horaSalida") != null) {
             asis.setHoraSalida(LocalDateTime.parse((String)payload.get("horaSalida")));
         }
-
         asistenciaRepository.save(asis);
         return ResponseEntity.ok(Map.of("message", "Registro actualizado."));
     }
